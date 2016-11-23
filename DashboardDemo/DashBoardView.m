@@ -28,7 +28,8 @@
     
     CGFloat _strokeEndAnimateTo;
     
-    CAShapeLayer *_shapeLayer;
+    CAShapeLayer *_progressLayer;
+    CAShapeLayer *_indicatorLayer;
     
     UILabel *_pointLabel;
     UILabel *_levelLabel;
@@ -37,10 +38,11 @@
 - (instancetype)initWithFrame:(CGRect)frame {
     if (self = [super initWithFrame:frame]) {
         [self setupMemberVariables];
-        [self configShareLayer];
+        [self configProgressLayer];
         [self configExpLabel];
         [self configPointLabel];
         [self configLevelLabel];
+        [self configIndicatorLayer];
     }
     return self;
 }
@@ -71,16 +73,43 @@
     _colorsArray = @[];
 }
 
-- (void)configShareLayer {
+- (void)configIndicatorLayer {
+    
+    CGFloat x = kMarginToScreen + kMarginBetweenCurves + 25;
+    CGFloat y = _curveCenter.y - _curveradius;
+    CGFloat width = (_curveradius - 25 - kMarginBetweenCurves)*2;
+    CGFloat height = (_curveradius - 25 - kMarginBetweenCurves)*2;
+    
+    UIBezierPath *pivotPath = [UIBezierPath bezierPathWithArcCenter:CGPointMake(width/2, height) radius:10.0 startAngle:0 endAngle:M_PI*2 clockwise:YES];
+    CAShapeLayer *pivotLayer = [CAShapeLayer layer];
+    pivotLayer.path = pivotPath.CGPath;
+    pivotLayer.fillColor = [UIColor blackColor].CGColor;
+    
+    CGMutablePathRef pathRef = CGPathCreateMutable();
+    CGPathMoveToPoint(pathRef, NULL, 0, height);
+    CGPathAddLineToPoint(pathRef, NULL, width/2, height);
+    _indicatorLayer = [CAShapeLayer layer];
+    _indicatorLayer.path = pathRef;
+    _indicatorLayer.anchorPoint = CGPointMake(0.5, 1.0);
+    _indicatorLayer.frame = CGRectMake(x, y, width, height);
+    _indicatorLayer.lineWidth = 3.0f;
+    _indicatorLayer.strokeColor = [UIColor redColor].CGColor;
+//    _indicatorLayer.borderWidth = 1;
+    [_indicatorLayer addSublayer:pivotLayer];
+    [self.layer addSublayer:_indicatorLayer];
+    CGPathRelease(pathRef);
+}
+
+- (void)configProgressLayer {
     UIBezierPath *path = [UIBezierPath bezierPathWithArcCenter:_curveCenter radius:_curveradius-kMarginBetweenCurves startAngle:_startAngle endAngle:_endAngle clockwise:YES];
-    _shapeLayer = [CAShapeLayer layer];
-    _shapeLayer.path = path.CGPath;
-    _shapeLayer.lineCap = kCALineCapRound;
-    _shapeLayer.lineWidth = 10.f;
-    _shapeLayer.fillColor = [UIColor clearColor].CGColor;
-    _shapeLayer.strokeColor = [UIColor redColor].CGColor;
-    _shapeLayer.strokeEnd = 0;
-    [self.layer addSublayer:_shapeLayer];
+    _progressLayer = [CAShapeLayer layer];
+    _progressLayer.path = path.CGPath;
+    _progressLayer.lineCap = kCALineCapRound;
+    _progressLayer.lineWidth = 10.f;
+    _progressLayer.fillColor = [UIColor clearColor].CGColor;
+    _progressLayer.strokeColor = [UIColor redColor].CGColor;
+    _progressLayer.strokeEnd = 0;
+    [self.layer addSublayer:_progressLayer];
 }
 
 - (void)configExpLabel {
@@ -113,7 +142,8 @@
 - (void)drawRect:(CGRect)rect {
     [self drawOutCurvePath];
     [self drawDial];
-    [self beginShapeLayerAnimation];
+    [self beginIndicatorAnimation];
+    [self beginProgressLayerAnimation];
     [self beginWordsAnimation];
 }
 
@@ -146,6 +176,11 @@
         
         //数字
         CATextLayer *txtLayer = [CATextLayer layer];
+        //解决文字不清晰
+        txtLayer.contentsScale = [UIScreen mainScreen].scale;
+        
+//        txtLayer.shouldRasterize = YES;
+//        txtLayer.allowsEdgeAntialiasing = YES;
         CGFloat width = [_expArray[i+1] boundingRectWithSize:CGSizeMake(CGFLOAT_MAX, 13) options:NSStringDrawingUsesFontLeading attributes:@{NSFontAttributeName:[UIFont systemFontOfSize:13]} context:nil].size.width;
         txtLayer.frame = CGRectMake(0, 0, width, 13);
         CGPoint position = CGPointMake(curvePath.currentPoint.x+20*cos(endAngle), curvePath.currentPoint.y+20*sin(endAngle));
@@ -169,7 +204,18 @@
 }
 
 //开始动画
-- (void)beginShapeLayerAnimation {
+- (void)beginIndicatorAnimation {
+    POPBasicAnimation *rotateAnim = [POPBasicAnimation animationWithPropertyNamed:kPOPLayerRotation];
+    rotateAnim.toValue = @M_PI;
+    rotateAnim.duration = _duration;
+    rotateAnim.beginTime = CACurrentMediaTime()+1.0;
+    rotateAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    [_indicatorLayer pop_addAnimation:rotateAnim forKey:@"rotation"];
+    
+    [self addColorAnimationTo:_indicatorLayer propertyName:kPOPShapeLayerStrokeColor];
+}
+
+- (void)beginProgressLayerAnimation {
     
     POPBasicAnimation *strokeAnim = [POPBasicAnimation animationWithPropertyNamed:kPOPShapeLayerStrokeEnd];
     strokeAnim.fromValue = @0;
@@ -177,9 +223,9 @@
     strokeAnim.duration = _duration;
     strokeAnim.beginTime = CACurrentMediaTime() + 1.0;
     strokeAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-    [_shapeLayer pop_addAnimation:strokeAnim forKey:@"strokeAnim"];
+    [_progressLayer pop_addAnimation:strokeAnim forKey:@"strokeAnim"];
     
-    [self addColorAnimationTo:_shapeLayer propertyName:kPOPShapeLayerStrokeColor];
+    [self addColorAnimationTo:_progressLayer propertyName:kPOPShapeLayerStrokeColor];
 }
 
 - (void)beginWordsAnimation {
@@ -257,7 +303,7 @@
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     
-    [self beginShapeLayerAnimation];
+    [self beginProgressLayerAnimation];
     [self beginWordsAnimation];
 }
 
